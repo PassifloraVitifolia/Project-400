@@ -3,7 +3,6 @@ import open_clip
 from huggingface_hub import hf_hub_download
 
 DEVICE = "mps" if torch.backends.mps.is_available() else "cpu"
-TEMPLATE = "a satellite photo of {}."
 
 
 def load_clip():
@@ -33,9 +32,15 @@ def encode_images(model, preprocess, images, batch_size=64):
     return torch.cat(all_emb)
 
 
-def encode_texts(model, tokenizer, class_names, template=TEMPLATE):
+def encode_texts(model, tokenizer, class_names, template):
     # Returns L2-normalized text embeddings, one row per class name.
     text_input = tokenizer([template.format(c) for c in class_names]).to(DEVICE)
     with torch.no_grad():
         emb = model.encode_text(text_input)
     return (emb / emb.norm(dim=-1, keepdim=True)).cpu()
+
+def encode_ensemble(model, tokenizer, class_names, templates):
+    # One text embedding per class: average over all templates, then re-normalize.
+    # With a single template this is the same as encode_texts.
+    emb = torch.stack([encode_texts(model, tokenizer, class_names, t) for t in templates]).mean(dim=0)
+    return emb / emb.norm(dim=-1, keepdim=True)
